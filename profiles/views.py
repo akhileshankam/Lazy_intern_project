@@ -16,8 +16,20 @@ from .forms import (
 )
 
 # ---------------------------------
-# Yardımcılar
+# Helpers
 # ---------------------------------
+def _normalize(v):
+    """'None', 'null', 'undefined', '-' vb. stringleri gerçek None'a çevirir; trim yapar."""
+    if v is None:
+        return None
+    v = str(v).strip()
+    return None if v.lower() in {"none", "null", "undefined", "-"} else v
+
+def _display(v):
+    """Ekranda güvenli gösterim: normalize sonrası None ise boş string döndür."""
+    nv = _normalize(v)
+    return "" if nv is None else nv
+
 def calculate_completion_percent(profile: Profile) -> int:
     percent = 0
     if getattr(profile, "bio", None):
@@ -27,7 +39,6 @@ def calculate_completion_percent(profile: Profile) -> int:
     if hasattr(profile, "skills") and profile.skills.exists():
         percent += 40
     return percent
-
 
 def calculate_company_completion(company: Company) -> int:
     percent = 0
@@ -39,9 +50,7 @@ def calculate_company_completion(company: Company) -> int:
         percent += 40
     return percent
 
-
 def ensure_company_slug(company: Company) -> None:
-    """slug boşsa güvenli bir şekilde üretip kaydet."""
     if not company.slug:
         base = slugify(company.name or f"company-{company.pk}") or f"company-{company.pk}"
         slug = base
@@ -52,13 +61,11 @@ def ensure_company_slug(company: Company) -> None:
         company.slug = slug
         company.save(update_fields=["slug"])
 
-
 # ---------------------------------
-# Yönlendirme
+# Redirect
 # ---------------------------------
 @login_required
 def profile_redirect(request):
-    """Kullanıcı company’e bağlıysa şirket paneline, değilse öğrenci profiline gönder."""
     try:
         if hasattr(request.user, "company") and request.user.company:
             ensure_company_slug(request.user.company)
@@ -67,9 +74,8 @@ def profile_redirect(request):
         pass
     return redirect("profile_detail", username=request.user.username)
 
-
 # ---------------------------------
-# Öğrenci profili (detay + formlar)
+# Student profile
 # ---------------------------------
 @login_required
 def profile_detail(request, username):
@@ -80,15 +86,17 @@ def profile_detail(request, username):
     profile_form = ProfileForm(instance=profile)
     project_form = ProjectForm()
     certification_form = CertificationForm()
+    errors = []
 
     if request.method == "POST":
+        # ---------- Personal Info ----------
         if "profile_submit" in request.POST:
             profile_form = ProfileForm(request.POST, instance=profile)
             if profile_form.is_valid():
                 profile_form.save()
-                # User ad-soyad & email
-                full_name = request.POST.get("full_name", "").strip()
-                email = request.POST.get("email", "").strip()
+                # full_name ve email manuel kaydedilir
+                full_name = request.POST.get("full_name", "")
+                email = request.POST.get("email", "")
                 if full_name:
                     parts = full_name.split()
                     user.first_name = parts[0]
@@ -97,7 +105,10 @@ def profile_detail(request, username):
                     user.email = email
                 user.save()
                 return redirect("profile_detail", username=username)
+            else:
+                errors = profile_form.errors
 
+        # ---------- Project ----------
         elif "project_submit" in request.POST:
             project_form = ProjectForm(request.POST)
             if project_form.is_valid():
@@ -105,7 +116,10 @@ def profile_detail(request, username):
                 p.profile = profile
                 p.save()
                 return redirect("profile_detail", username=username)
+            else:
+                errors = project_form.errors
 
+        # ---------- Certification ----------
         elif "certification_submit" in request.POST:
             certification_form = CertificationForm(request.POST)
             if certification_form.is_valid():
@@ -113,53 +127,50 @@ def profile_detail(request, username):
                 c.profile = profile
                 c.save()
                 return redirect("profile_detail", username=username)
+            else:
+                errors = certification_form.errors
 
-        elif "social_submit" in request.POST:
-            profile.github = request.POST.get("github", "")
-            profile.linkedin = request.POST.get("linkedin", "")
-            profile.website = request.POST.get("website", "")
-            profile.legacy_website = request.POST.get("legacy_website", "")
-            profile.save()
-            return redirect("profile_detail", username=username)
-
-        elif "internship_submit" in request.POST:
-            profile.internship_type = request.POST.get("internship_type", "")
-            profile.preferred_locations = request.POST.get("preferred_locations", "")
-            profile.open_to_relocate = "open_to_relocate" in request.POST
-            profile.save()
-            return redirect("profile_detail", username=username)
-
+        # ---------- Skills ----------
         elif "skills_submit" in request.POST:
             skills_ids = request.POST.getlist("skills")
             profile.skills.set(skills_ids)
+            return redirect("profile_detail", username=username)
+
+        # ---------- Social Links ----------
+        elif "social_submit" in request.POST:
+            profile.github = request.POST.get("github", "").strip() or None
+            profile.linkedin = request.POST.get("linkedin", "").strip() or None
+            profile.website = request.POST.get("website", "").strip() or None
+            profile.legacy_website = request.POST.get("legacy_website", "").strip() or None
+            profile.save()
+            return redirect("profile_detail", username=username)
+
+        # ---------- Internship ----------
+        elif "internship_submit" in request.POST:
+            profile.internship_type = request.POST.get("internship_type", "").strip() or None
+            profile.preferred_locations = request.POST.get("preferred_locations", "").strip() or None
+            profile.open_to_relocate = "open_to_relocate" in request.POST
+            profile.save()
             return redirect("profile_detail", username=username)
 
     context = {
         "profile_user": user,
         "profile": profile,
         "full_name": user.get_full_name(),
-        "form": profile_form,
+        "profile_form": profile_form,
         "project_form": project_form,
         "certification_form": certification_form,
         "years": years,
-
+        "skills_count": profile.skills.count(),
         "projects": profile.projects.all() if hasattr(profile, "projects") else [],
         "certifications": profile.certifications.all() if hasattr(profile, "certifications") else [],
-
-        "skills_count": profile.skills.count(),
-        "projects_count": profile.projects.count() if hasattr(profile, "projects") else 0,
-        "certifications_count": profile.certifications.count() if hasattr(profile, "certifications") else 0,
-        "profile_views": getattr(profile, "profile_views", 0),
-        "completion_percent": calculate_completion_percent(profile),
-
         "all_skills": Skill.objects.all(),
         "skills": profile.skills.all(),
+        "errors": errors,
     }
     return render(request, "profiles/profile_detail.html", context)
-
-
 # ---------------------------------
-# Şirket profili (liste + filtre + bookmark)
+# Company profile (unchanged except helpers used above)
 # ---------------------------------
 @login_required
 def company_profile(request, slug):
@@ -185,13 +196,12 @@ def company_profile(request, slug):
                 return redirect("company_profile", slug=slug)
 
         elif "social_submit" in request.POST:
-            company.linkedin = request.POST.get("linkedin", "")
-            company.twitter = request.POST.get("twitter", "")
-            company.facebook = request.POST.get("facebook", "")
+            company.linkedin = _normalize(request.POST.get("linkedin"))
+            company.twitter = _normalize(request.POST.get("twitter"))
+            company.facebook = _normalize(request.POST.get("facebook"))
             company.save()
             return redirect("company_profile", slug=slug)
 
-    # ---- Filtre parametreleri ----
     tab = request.GET.get("tab", "all")
     major = (request.GET.get("major") or "").strip()
     skill = (request.GET.get("skill") or "").strip()
@@ -200,7 +210,6 @@ def company_profile(request, slug):
     graduation_year = (request.GET.get("graduation_year") or "").strip()
     internship_type = (request.GET.get("internship_type") or "").strip()
 
-    # SADECE ÖĞRENCİLER
     base_students = (
         Profile.objects.select_related("user")
         .prefetch_related("skills", "projects")
@@ -226,7 +235,6 @@ def company_profile(request, slug):
     filtered_count = filtered_students.count()
     total_count = base_students.count()
 
-    # Bookmark’lar
     bookmarked_students = company.bookmarked_students.select_related("user").prefetch_related("skills").all()
     bookmarked_ids = set(bookmarked_students.values_list("id", flat=True))
 
@@ -238,21 +246,18 @@ def company_profile(request, slug):
         "completion_percent": calculate_company_completion(company),
         "company_form": company_form,
         "position_form": position_form,
-
         "students": filtered_students,
         "filtered_students": filtered_students,
         "bookmarked_students": bookmarked_students,
         "bookmarked_ids": bookmarked_ids,
         "active_tab": tab,
-
         "filtered_count": filtered_count,
         "total_count": total_count,
     }
     return render(request, "profiles/company_profile.html", context)
 
-
 # ---------------------------------
-# Bookmark toggle (yalnızca POST)
+# Bookmark toggle
 # ---------------------------------
 @login_required
 @require_POST
@@ -275,9 +280,8 @@ def toggle_bookmark(request, student_id: int):
     )
     return redirect(next_url)
 
-
 # ---------------------------------
-# Profil görüntüleme sayacı (+1) ve yönlendirme (yalnızca POST)
+# Profile view counter
 # ---------------------------------
 @login_required
 @require_POST
@@ -290,9 +294,8 @@ def increment_profile_views(request, user_id: int):
     )
     return redirect(next_url)
 
-
 # ---------------------------------
-# Öğrenci herkese açık profil (Recruiter "View Profile")
+# Public student profile
 # ---------------------------------
 @login_required
 def student_profile_view(request, user_id: int):
@@ -316,10 +319,7 @@ def student_profile_view(request, user_id: int):
         },
     )
 
-
-# ---------------------------------
-# Eski edit URL -> detay
-# ---------------------------------
 @login_required
 def profile_edit(request, username):
     return redirect("profile_detail", username=username)
+ 
