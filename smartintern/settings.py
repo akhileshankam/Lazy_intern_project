@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django.contrib.sites",  # allauth için
+    "django.contrib.sites",
 
     # Project apps
     "core",
@@ -61,7 +61,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "allauth.account.middleware.AccountMiddleware",  # allauth için önemli
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -77,7 +77,7 @@ TEMPLATES = [
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.debug",
-                "django.template.context_processors.request",  # allauth için
+                "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
             ],
@@ -112,7 +112,7 @@ elif DB_ENGINE == "mysql":
             "PORT": os.getenv("DB_PORT", "3306"),
         }
     }
-else:  # default sqlite
+else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -168,7 +168,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ----------------- Google / Social Auth -----------------
 SOCIALACCOUNT_LOGIN_ON_GET = True
-SOCIALACCOUNT_AUTO_SIGNUP = False  # Önemli: otomatik signup yapmasın
+SOCIALACCOUNT_AUTO_SIGNUP = True  # otomatik kullanıcı oluşturulsun
 SOCIALACCOUNT_ADAPTER = "core.adapters.MySocialAccountAdapter"
 
 SOCIALACCOUNT_PROVIDERS = {
@@ -181,7 +181,7 @@ SOCIALACCOUNT_PROVIDERS = {
         "SCOPE": ["profile", "email"],
         "AUTH_PARAMS": {
             "access_type": "online",
-            "prompt": "select_account",  # Her zaman hesap seçme ekranı
+            "prompt": "select_account",
         },
     }
 }

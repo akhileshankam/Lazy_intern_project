@@ -9,7 +9,7 @@ venv/
 .venv/
 ENV/
 env.bak/
-
+.env
 # Packaging
 *.egg-info/
 dist/
